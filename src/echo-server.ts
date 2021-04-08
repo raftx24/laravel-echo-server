@@ -122,7 +122,12 @@ export class EchoServer {
      */
     startup(): void {
         Log.title(`\nL A R A V E L  E C H O  S E R V E R\n`);
-        Log.info(`version ${packageFile.version}\n`);
+        Log.info(`version ${packageFile.version} - UNOFFICIAL - with RateLimit\n`);
+        Log.warning(`This version was forked from laravel-echo-server and RateLimit was added to it.\n`);
+
+        if (this.options.maxConcurrentAuthRequests) {
+            Log.info(`max_concurrent_auth_requests = ${this.options.maxConcurrentAuthRequests}\n`);
+        }
 
         if (this.options.devMode) {
             Log.warning('Starting server in DEV mode...\n');
