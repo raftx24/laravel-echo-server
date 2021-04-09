@@ -1,5 +1,5 @@
 {
-  "name": "@raftx24/laravel-echo-server",
+  "name": "@startinfinity/laravel-echo-server",
   "version": "1.7.1",
   "description": "Laravel Echo Node JS Server for Socket.io",
   "repository": {
