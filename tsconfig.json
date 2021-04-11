@@ -12,10 +12,7 @@
     "lib": ["es2015", "dom"],
     "types": ["node"]
   },
-  "files": [
-    "src/index.ts",
-    "src/cli/index.ts"
-  ],
+    "include": ["src/**/*"],
   "exclude": [
     "node_modules"
   ],

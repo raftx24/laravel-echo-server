@@ -17,7 +17,11 @@ export class EchoServer {
     public defaultOptions: any = {
         authHost: 'http://localhost',
         authEndpoint: '/broadcasting/auth',
-        maxConcurrentAuthRequests: null,
+        batch: {
+            maxItems: null,
+            maxWait: null,
+            wait: null
+        },
         clients: [],
         database: 'redis',
         databaseConfig: {
@@ -122,11 +126,19 @@ export class EchoServer {
      */
     startup(): void {
         Log.title(`\nL A R A V E L  E C H O  S E R V E R\n`);
-        Log.info(`version ${packageFile.version} - UNOFFICIAL - with RateLimit\n`);
+        Log.info(`version ${packageFile.version} - UNOFFICIAL - with Batching\n`);
         Log.warning(`This version was forked from laravel-echo-server and RateLimit was added to it.\n`);
 
-        if (this.options.maxConcurrentAuthRequests) {
-            Log.info(`max_concurrent_auth_requests = ${this.options.maxConcurrentAuthRequests}\n`);
+        if (this.options?.batch?.wait) {
+            Log.info(`wait = ${this.options.batch.wait}ms`);
+        }
+
+        if (this.options?.batch?.maxWait) {
+            Log.info(`maxWait = ${this.options.batch.maxWait}ms`);
+        }
+
+        if (this.options?.batch?.maxItems) {
+            Log.info(`maxItems = ${this.options.batch.maxItems} `);
         }
 
         if (this.options.devMode) {

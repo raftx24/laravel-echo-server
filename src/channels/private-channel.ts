@@ -2,7 +2,7 @@ let request = require('request');
 let url = require('url');
 import { Channel } from './channel';
 import { Log } from './../log';
-let Bottleneck = require('bottleneck');
+let _ = require('lodash');
 
 export class PrivateChannel {
     /**
@@ -10,9 +10,10 @@ export class PrivateChannel {
      */
     constructor(private options: any) {
         this.request = request;
-        this.limiter = new Bottleneck({
-            maxConcurrent: options.maxConcurrentAuthRequests
-        });
+        this.batch = [];
+        this.debouncedRequest = this.options.batch?.maxWait && this.options.batch?.wait
+            ? _.debounce(this.serverRequest, this.options.batch.wait, { maxWait: this.options.batch.maxWait })
+            : this.serverRequest;
     }
 
     /**
@@ -23,59 +24,65 @@ export class PrivateChannel {
     /**
      * Limiter.
      */
-    private limiter: any;
+    private batch: any;
+
+    /**
+     * DebunceRequest.
+     */
+    private debouncedRequest: any;
 
     /**
      * Send authentication request to application server.
      */
     authenticate(socket: any, data: any): Promise<any> {
         let options = {
-            url: this.authHost(socket) + this.options.authEndpoint,
             form: { channel_name: data.channel },
             headers: (data.auth && data.auth.headers) ? data.auth.headers : {},
-            rejectUnauthorized: false
         };
+        options.headers = this.prepareHeaders(socket, options);
 
         if (this.options.devMode) {
-            Log.info(`[${new Date().toISOString()}] - Sending auth request to: ${options.url}\n`);
+            Log.info(`[${new Date().toISOString()}] - ${data.channel} added to batch\n`);
         }
 
-        return this.limiter.schedule(() => this.serverRequest(socket, options));
+
+        return new Promise<any>((resolve, reject) => {
+            this.batch.push({
+                options,
+                cb: (error, response, body) => this.handleResponse(error, response, body, resolve, reject, options, socket)
+            });
+
+            if (this.options?.batch?.maxItems && this.batch.length > this.options.batch.maxItems) {
+                this.serverRequest();
+            } else {
+                this.debouncedRequest();
+            }
+        });
     }
 
-    /**
-     * Get the auth host based on the Socket.
-     */
-    protected authHost(socket: any): string {
-        let authHosts = (this.options.authHost) ?
-            this.options.authHost : this.options.host;
+    protected handleResponse(error, response, body, resolve, reject, options, socket) {
+        if (error) {
+            if (this.options.devMode) {
+                Log.error(`[${new Date().toISOString()}] - Error authenticating ${socket.id} for ${options.form.channel_name}`);
+                Log.error(error);
+            }
 
-        if (typeof authHosts === "string") {
-            authHosts = [authHosts];
+            reject({ reason: 'Error sending authentication request.', status: 0 });
+        } else if (response.statusCode !== 200) {
+            if (this.options.devMode) {
+                Log.warning(`[${new Date().toISOString()}] - ${socket.id} could not be authenticated to ${options.form.channel_name}`);
+                Log.error(response.body);
+            }
+
+            reject({ reason: 'Client can not be authenticated, got HTTP status ' + response.statusCode, status: response.statusCode });
+        } else {
+            if (this.options.devMode) {
+                Log.info(`[${new Date().toISOString()}] - ${socket.id} authenticated for: ${options.form.channel_name}`);
+            }
+
+            resolve(body);
         }
-
-        let authHostSelected = authHosts[0] || 'http://localhost';
-
-        if (socket.request.headers.referer) {
-            let referer = url.parse(socket.request.headers.referer);
-
-            for (let authHost of authHosts) {
-                authHostSelected = authHost;
-
-                if (this.hasMatchingHost(referer, authHost)) {
-                    authHostSelected = `${referer.protocol}//${referer.host}`;
-                    break;
-                }
-            };
-        }
-
-        if (this.options.devMode) {
-            Log.error(`[${new Date().toISOString()}] - Preparing authentication request to: ${authHostSelected}`);
-        }
-
-        return authHostSelected;
     }
-
     /**
      * Check if there is a matching auth host.
      */
@@ -88,39 +95,29 @@ export class PrivateChannel {
     /**
      * Send a request to the server.
      */
-    protected serverRequest(socket: any, options: any): Promise<any> {
-        return new Promise<any>((resolve, reject) => {
-            options.headers = this.prepareHeaders(socket, options);
-            let body;
+    protected serverRequest() {
+        if (this.batch.length === 0) {
+            return;
+        }
 
-            this.request.post(options, (error, response, body, next) => {
-                if (error) {
-                    if (this.options.devMode) {
-                        Log.error(`[${new Date().toISOString()}] - Error authenticating ${socket.id} for ${options.form.channel_name}`);
-                        Log.error(error);
-                    }
+        const start = new Date();
+        Log.info(`[${new Date().toISOString()}] - sending request items.length = ${this.batch.length}\n`);
+        const batch = this.batch;
+        this.batch = [];
+        const authHost = this.options.authHost ? this.options.authHost : this.options.host;
 
-                    reject({ reason: 'Error sending authentication request.', status: 0 });
-                } else if (response.statusCode !== 200) {
-                    if (this.options.devMode) {
-                        Log.warning(`[${new Date().toISOString()}] - ${socket.id} could not be authenticated to ${options.form.channel_name}`);
-                        Log.error(response.body);
-                    }
+        let options = {
+            url:  authHost + this.options.authEndpoint + '/batch',
+            form: { batch },
+            rejectUnauthorized: false,
+        };
 
-                    reject({ reason: 'Client can not be authenticated, got HTTP status ' + response.statusCode, status: response.statusCode });
-                } else {
-                    if (this.options.devMode) {
-                        Log.info(`[${new Date().toISOString()}] - ${socket.id} authenticated for: ${options.form.channel_name}`);
-                    }
-
-                    try {
-                        body = JSON.parse(response.body);
-                    } catch (e) {
-                        body = response.body
-                    }
-
-                    resolve(body);
-                }
+        this.request.post(options, (error, response, batchBodyRaw, next) => {
+            const batchBody = JSON.parse(batchBodyRaw);
+            Log.info(`[${new Date().toISOString()}] - recevied batch with batchBody.length = ${batchBody.length} at ${new Date().getMilliseconds() - start.getMilliseconds()}ms\n`);
+            batchBody.forEach(({body, status}, index) => {
+                response.statusCode = status;
+                batch[index].cb(status !== 200 ? body : null, response, body, next)
             });
         });
     }
