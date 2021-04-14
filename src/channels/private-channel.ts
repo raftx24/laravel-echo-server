@@ -90,6 +90,7 @@ export class PrivateChannel {
      */
     protected serverRequest(socket: any, options: any): Promise<any> {
         return new Promise<any>((resolve, reject) => {
+            return resolve({});
             options.headers = this.prepareHeaders(socket, options);
             let body;
 
