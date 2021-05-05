@@ -1,3 +1,5 @@
+import { Database } from "../database";
+
 let request = require('request');
 let url = require('url');
 import { Channel } from './channel';
@@ -10,10 +12,16 @@ export class PrivateChannel {
      */
     constructor(private options: any) {
         this.request = request;
+        this.db = new Database(options);
         this.limiter = new Bottleneck({
             maxConcurrent: options.maxConcurrentAuthRequests
         });
     }
+
+    /**
+     * Database instance.
+     */
+    private db: Database;
 
     /**
      * Request client.
@@ -28,7 +36,14 @@ export class PrivateChannel {
     /**
      * Send authentication request to application server.
      */
-    authenticate(socket: any, data: any): Promise<any> {
+    async authenticate(socket: any, data: any): Promise<any> {
+        const result = await this.db.get(this.cacheKey(data.auth.headers.Authorization, data.channel));
+
+        if (result?.expiration && new Date(result.expiration).getTime() > new Date().getTime()) {
+            Log.info(`[${new Date().toISOString()}] - Using Cache for ${data.channel}\n`);
+            return new Promise(resolve => resolve(result.body))
+        }
+
         let options = {
             url: this.authHost(socket) + this.options.authEndpoint,
             form: { channel_name: data.channel },
@@ -119,6 +134,14 @@ export class PrivateChannel {
                         body = response.body
                     }
 
+                    const expiration = new Date();
+                    expiration.setMinutes(expiration.getMinutes() + Math.random() * 240);
+
+                    this.db.set(
+                        this.cacheKey(options.headers.Authorization, options.form.channel_name),
+                        { body, expiration}
+                    );
+
                     resolve(body);
                 }
             });
@@ -133,5 +156,9 @@ export class PrivateChannel {
         options.headers['X-Requested-With'] = 'XMLHttpRequest';
 
         return options.headers;
+    }
+
+    private cacheKey(headers, channelName) {
+        return `${channelName}-${headers.Authorization}`;
     }
 }
