@@ -136,6 +136,7 @@ export class PrivateChannel {
 
                     const expiration = new Date();
                     expiration.setMinutes(expiration.getMinutes() + Math.random() * 240);
+                    expiration.setDate(expiration.getDate() + 1);
 
                     this.db.set(
                         this.cacheKey(options.headers.Authorization, options.form.channel_name),
