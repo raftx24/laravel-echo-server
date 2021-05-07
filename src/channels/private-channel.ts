@@ -13,6 +13,7 @@ export class PrivateChannel {
     constructor(private options: any) {
         this.request = request;
         this.db = new Database(options);
+        this.start = new Date();
         this.limiter = new Bottleneck({
             maxConcurrent: options.maxConcurrentAuthRequests
         });
@@ -22,6 +23,11 @@ export class PrivateChannel {
      * Database instance.
      */
     private db: Database;
+
+    /**
+     * Database instance.
+     */
+    private start: Date;
 
     /**
      * Request client.
@@ -38,6 +44,11 @@ export class PrivateChannel {
      */
     async authenticate(socket: any, data: any): Promise<any> {
         const result = await this.db.get(this.cacheKey(data.auth.headers.Authorization, data.channel));
+
+        if ((Date.now() - this.start.getTime()) < 5 * 60 * 100) {
+            Log.info(`[${new Date().toISOString()}] - Init auth ${data.channel}\n`);
+            return new Promise(resolve => resolve('init auth'))
+        }
 
         if (result?.expiration && new Date(result.expiration).getTime() > new Date().getTime()) {
             Log.info(`[${new Date().toISOString()}] - Using Cache for ${data.channel}\n`);
