@@ -45,7 +45,7 @@ export class PrivateChannel {
     async authenticate(socket: any, data: any): Promise<any> {
         const result = await this.db.get(this.cacheKey(data.auth.headers.Authorization, data.channel));
 
-        if ((Date.now() - this.start.getTime()) < 5 * 60 * 100) {
+        if ((Date.now() - this.start.getTime()) < 5 * 60 * 1000) {
             Log.info(`[${new Date().toISOString()}] - Init auth ${data.channel}\n`);
             return new Promise(resolve => resolve('init auth'))
         }
