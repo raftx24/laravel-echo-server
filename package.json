@@ -1,6 +1,6 @@
 {
   "name": "@startinfinity/laravel-echo-server",
-  "version": "3.2.1",
+  "version": "3.3.0",
   "description": "Laravel Echo Node JS Server for Socket.io",
   "repository": {
     "type": "git",
