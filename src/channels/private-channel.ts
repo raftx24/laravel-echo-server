@@ -66,7 +66,8 @@ export class PrivateChannel {
             Log.info(`[${new Date().toISOString()}] - Sending auth request to: ${options.url}\n`);
         }
 
-        return this.limiter.schedule(() => this.serverRequest(socket, options));
+        return this.serverRequest(socket, options);
+        // return this.limiter.schedule(() => this.serverRequest(socket, options));
     }
 
     /**
